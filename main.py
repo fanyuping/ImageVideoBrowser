@@ -3,9 +3,19 @@ from PyQt6.QtMultimediaWidgets import QVideoWidget
 import sys
 import os
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QSplitter, QTreeView,
-                             QWidget, QVBoxLayout, QLabel, QStackedWidget, QSizePolicy)
-from PyQt6.QtGui import (QFileSystemModel, QAction, QPixmap, QMovie)
+                             QWidget, QVBoxLayout, QHBoxLayout, QLabel, QStackedWidget, QSizePolicy, QSlider, QPushButton)
+from PyQt6.QtGui import (QFileSystemModel, QAction, QPixmap, QMovie, QIcon)
 from PyQt6.QtCore import (Qt, QDir, QUrl, QThread, pyqtSignal)
+
+
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
 
 
 class ScanWorker(QThread):
@@ -87,14 +97,34 @@ class VideoPreviewWidget(QWidget):
         super().__init__()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
         self.video_widget = QVideoWidget()
         layout.addWidget(self.video_widget)
+
+        # Controls layout
+        controls_layout = QHBoxLayout()
+        self.play_button = QPushButton("暂停")
+        self.play_button.setFixedWidth(60)
+        self.play_button.clicked.connect(self.toggle_play)
+
+        self.position_slider = QSlider(Qt.Orientation.Horizontal)
+        self.position_slider.setRange(0, 0)
+        self.position_slider.sliderMoved.connect(self.set_position)
+
+        controls_layout.addWidget(self.play_button)
+        controls_layout.addWidget(self.position_slider)
+        layout.addLayout(controls_layout)
 
         self.media_player = QMediaPlayer()
         self.audio_output = QAudioOutput()
         self.media_player.setAudioOutput(self.audio_output)
         self.media_player.setVideoOutput(self.video_widget)
+
+        # Connect signals
+        self.media_player.positionChanged.connect(self.update_position)
+        self.media_player.durationChanged.connect(self.update_duration)
+        self.media_player.playbackStateChanged.connect(self.update_play_button)
 
     def set_video(self, file_path):
         self.media_player.setSource(QUrl.fromLocalFile(file_path))
@@ -109,12 +139,33 @@ class VideoPreviewWidget(QWidget):
         else:
             self.media_player.play()
 
+    def update_play_button(self, state):
+        if state == QMediaPlayer.PlaybackState.PlayingState:
+            self.play_button.setText("暂停")
+        else:
+            self.play_button.setText("播放")
+
+    def update_position(self, position):
+        if not self.position_slider.isSliderDown():
+            self.position_slider.setValue(position)
+
+    def update_duration(self, duration):
+        self.position_slider.setRange(0, duration)
+
+    def set_position(self, position):
+        self.media_player.setPosition(position)
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Image and Video Browser")
         self.resize(1200, 800)
+
+        # Set Window Icon (looks for app_icon.png bundled or in current dir)
+        icon_path = resource_path("app_icon.png")
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
 
         # State for navigation
         self.current_media_list = []
@@ -126,8 +177,18 @@ class MainWindow(QMainWindow):
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.setCentralWidget(self.splitter)
 
+        # Left Container (Tree + Help)
+        self.left_container = QWidget()
+        self.left_layout = QVBoxLayout(self.left_container)
+        self.left_layout.setContentsMargins(0, 0, 0, 0)
+        self.left_layout.setSpacing(2)
+        self.splitter.addWidget(self.left_container)
+
         # Left: File System Tree
         self.setup_tree_view()
+
+        # Left Bottom: Help & Info
+        self.setup_help_panel()
 
         # Right: Preview Area
         self.setup_preview_area()
@@ -149,11 +210,54 @@ class MainWindow(QMainWindow):
         self.tree.hideColumn(2)  # Type
         self.tree.hideColumn(3)  # Date Modified
 
-        self.splitter.addWidget(self.tree)
+        self.left_layout.addWidget(self.tree, 1)  # Tree takes most space
         self.tree.selectionModel().selectionChanged.connect(self.on_selection_changed)
 
+    def setup_help_panel(self):
+        help_panel = QWidget()
+        help_panel.setStyleSheet(
+            "background-color: #f9f9f9; border-top: 1px solid #ddd; padding: 10px;")
+        help_layout = QVBoxLayout(help_panel)
+
+        title = QLabel("💡 软件说明 & 快捷键")
+        title.setStyleSheet(
+            "font-weight: bold; font-size: 14px; margin-bottom: 5px;")
+        help_layout.addWidget(title)
+
+        help_text = (
+            "<b>主要功能:</b><br/>"
+            "• 本地图片、视频及 GIF 动图极速预览<br/>"
+            "• 支持文件夹递归扫描，自动构建列表<br/>"
+            "• 异步加载技术，大文件夹不假死<br/><br/>"
+            "<b>常用快捷键:</b><br/>"
+            "• <b>← / →</b> : 上一张 / 下一张<br/>"
+            "• <b>空格</b> : 视频 播放 / 暂停<br/>"
+            "• <b>滚轮</b> : 快速切换媒体文件<br/>"
+            "• <b>F11</b> : 切换全屏预览<br/>"
+            "• <b>ESC</b> : 退出全屏<br/><br/>"
+            "<font color='#666'>作者: AI 助手 Qoder & 用户</font>"
+        )
+        content = QLabel(help_text)
+        content.setWordWrap(True)
+        help_layout.addWidget(content)
+
+        self.left_layout.addWidget(help_panel, 0)  # Fixed size at bottom
+
     def setup_preview_area(self):
+        right_container = QWidget()
+        right_layout = QVBoxLayout(right_container)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(0)
+
+        # File Info Label
+        self.file_info_label = QLabel("")
+        self.file_info_label.setStyleSheet(
+            "background-color: #f0f0f0; padding: 5px; font-weight: bold;")
+        self.file_info_label.setWordWrap(True)
+        right_layout.addWidget(self.file_info_label)
+
         self.preview_widget = QStackedWidget()
+        right_layout.addWidget(self.preview_widget)
 
         # 0: Placeholder
         self.placeholder = QLabel("请选择图片或视频进行预览")
@@ -168,7 +272,7 @@ class MainWindow(QMainWindow):
         self.video_preview = VideoPreviewWidget()
         self.preview_widget.addWidget(self.video_preview)
 
-        self.splitter.addWidget(self.preview_widget)
+        self.splitter.addWidget(right_container)
         self.splitter.setStretchFactor(1, 1)
 
     def on_selection_changed(self, selected, deselected):
@@ -235,6 +339,10 @@ class MainWindow(QMainWindow):
             self.show_preview(self.current_media_list[self.current_index])
 
     def show_preview(self, file_path):
+        # Update file info
+        file_name = os.path.basename(file_path)
+        self.file_info_label.setText(f"名称: {file_name}\n路径: {file_path}")
+
         self.video_preview.stop()
 
         ext = os.path.splitext(file_path)[1].lower()
@@ -258,14 +366,14 @@ class MainWindow(QMainWindow):
         elif event.key() == Qt.Key.Key_Escape:
             if self.isFullScreen():
                 self.showNormal()
-                self.tree.show()
+                self.left_container.show()
         elif event.key() == Qt.Key.Key_F11:
             if self.isFullScreen():
                 self.showNormal()
-                self.tree.show()
+                self.left_container.show()
             else:
                 self.showFullScreen()
-                self.tree.hide()
+                self.left_container.hide()
         else:
             super().keyPressEvent(event)
 
