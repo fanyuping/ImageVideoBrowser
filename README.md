@@ -20,9 +20,9 @@
 ## 🚀 如何使用
 
 ### 1. 运行源码（开发模式）
-首先确保您的环境中已安装 Python 3.x，然后安装必要的依赖库：
+首先确保您的环境中已安装 Python 3.x，然后通过项目提供的 `requirements.txt` 安装所有依赖库：
 ```bash
-pip install PyQt6
+pip install -r requirements.txt
 ```
 运行程序：
 ```bash
@@ -34,13 +34,9 @@ python main.py
 
 ## 🛠️ 编译与打包
 
-本项目使用 PyInstaller 进行单文件打包，方便分发。
+本项目使用 PyInstaller 进行单文件打包，方便分发。由于打包工具已包含在 `requirements.txt` 中，您可以直接执行以下命令：
 
-1.  **安装打包工具**：
-    ```bash
-    pip install pyinstaller
-    ```
-2.  **执行打包命令**：
+1.  **执行打包命令**：
     ```bash
     python -m PyInstaller --onefile --noconsole --icon=app_icon.ico --name ImageVideoBrowser main.py
     ```
@@ -51,7 +47,7 @@ python main.py
 
 ## 👤 作者信息
 
-*   **作者**：[您的名字/昵称]
+*   **作者**：[fanyuping]
 *   **版本**：v1.0.0
 *   **项目定位**：轻量级、响应迅速的本地多媒体资源管理与预览工具
 
